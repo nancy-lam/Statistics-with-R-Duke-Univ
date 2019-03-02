@@ -1,0 +1,311 @@
+---
+title: "Peer Assessment I"
+output:
+  html_document: 
+    pandoc_args: [
+      "--number-sections",
+    ]
+---
+
+
+First, let us load the data and necessary packages:
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+library(MASS)
+library(ggplot2)    
+library(dplyr)        
+library(knitr)        
+library(statsr)        
+library(GGally)       
+library(gridExtra)    
+library(BAS)          
+```
+
+## Question 1
+
+**Make a labeled histogram (with 30 bins) of the ages of the houses in the data set, and describe the distribution**
+
+```{r}
+ames_train$age <- sapply(ames_train$Year.Built, function(x) 2019 - x)
+
+ggplot(ames_train, aes(x = age, y =..density..)) +
+  geom_histogram(bins = 30, fill = 'blue', colour = 'black') +
+  geom_density(size = 1, colour = 'red') +
+  labs(title = 'Distribution of House Age', x = 'Age', y = 'Number of Houses') +
+  geom_vline(xintercept = mean(ames_train$age), colour = 'green', size = 1) +
+  geom_vline(xintercept = median(ames_train$age), colour = 'brown', size = 1) 
+```
+
+
+```{r}
+summary_age <- ames_train %>%
+  summarize(Mean_age = mean(age),
+            Median_age = median(age),
+            Sd_age = sd(age),
+            Q1 = quantile(age, 0.25),
+            Q3 = quantile(age, 0.75),
+            IQR = IQR(age),
+            Total = n())
+summary_age
+```
+
+The distribution of `age' is righ-skewed (the mean is 46.797, median is 44) and showed multimodal behaviour indicating that there are some high counts of houses for certain ages (such as 50 and 90). There is an decrease in number of houses as the age of houses increase. 
+
+
+* * *
+
+## Question 2
+
+**The mantra in real estate is "Location, Location, Location!" Make a graphical display that relates a home price to its neighborhood in Ames, Iowa. Which summary statistics are most appropriate to use for determining the most expensive, least expensive, and most heterogeneous (having the most variation in housing price) neighborhoods? Report which neighborhoods these are based on the summary statistics of your choice. Report the value of your chosen summary statistics for these neighborhoods.**
+
+```{r Q2, message = FALSE, warning = FALSE}
+
+# Perform summary statistics
+
+q2 <- ames_train %>% 
+  group_by(Neighborhood) %>% 
+  summarise(mean_price = mean(price),
+            median_price = median(price),
+            min_price = min(price),
+            max_price = max(price),
+            IQR = IQR(price),
+            sd_price = sd(price),
+            var_price = var(price),
+            total = n()) 
+
+# Determine most expensive, lease expensive and most heterogeneous
+
+most_expensive <- q2[which(q2$median_price == max(q2$median_price)),]
+least_expensive <- q2[which(q2$median_price == min(q2$median_price)),]
+most_heter <- q2[which(q2$sd_price == max(q2$sd_price)),]
+
+kable(most_expensive[1:9], caption = 'Most expensive houses')
+kable(least_expensive[1:9], caption = 'Least expensive houses')
+kable(most_heter[1:9], caption = 'Most heterogeneous houses')
+
+# Plot
+ggplot(ames_train, aes(x = Neighborhood, y = price/1000)) +
+  geom_boxplot(colour = 'black', fill = 'orange') +
+  labs(title = "Housing prices per Neighborhood", x = 'Neighborhood', y = "Price in [$ 1000]") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+```
+
+
+According to the chart, `StoneBr` is the most expensive and most heterogeneous neighborhood, follow by `NridgHt` while the least expensive Neighborhood is `MeadowV`. We can create different plots for `StoneBr` and `NridgHt` 
+
+```{r fig.width=12, fig.height=6}
+stone <- ames_train %>%
+  filter(Neighborhood == 'StoneBr')
+
+p1 <- ggplot(stone, aes(x = price/1000, y = ..density..)) +
+  geom_histogram(bins = 30, colour = 'black', fill = 'brown') +
+  geom_density(size = 1, colour = 'blue') +
+  labs(title = 'Neigborhood - StoneBr: Price distribution', x = 'Price(in $1000)', y = 'Density')
+
+nrid <- ames_train %>%
+  filter(Neighborhood == 'NridgHt') 
+ 
+p2 <- ggplot(nrid, aes(x = price/1000, y = ..density..)) +
+  geom_histogram(bins = 30, colour = 'black', fill = 'brown') +
+  geom_density(size = 1, colour = 'blue') +
+  labs(title = 'Neigborhood - NridgHt: Price distribution', x = 'Price(in $1000)', y = 'Density')
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+
+* * *
+
+## Question 3
+
+**Which variable has the largest number of missing values? Explain why it makes sense that there are so many missing values for this variable.**
+
+```{r Q3}
+na_count <- colSums(is.na(ames_train))
+head(sort(na_count, decreasing = TRUE), n = 1)
+
+```
+
+Pool Quality (Pool.QC) has the higest number of NA's. This number is likely high as "NA" is coded as "No Pool" in the data and not all of houses must have a pool.
+
+* * *
+
+## Question 4
+
+** We want to predict the natural log of the home prices. Candidate explanatory variables are lot size in square feet (Lot.Area), slope of property (Land.Slope), original construction date (Year.Built), remodel date (Year.Remod.Add), and the number of bedrooms above grade (Bedroom.AbvGr). Pick a model selection or model averaging method covered in the Specialization, and describe how this method works. Then, use this method to find the best multiple regression model for predicting the natural log of the home prices.**
+
+
+First, we will overview the correlation between those varibales. 
+```{r Q4, fig.width=12, fig.height=8}
+ggpairs(ames_train, columns = c('price', 'Lot.Area', 'Land.Slope', 'Year.Built', 'Year.Remod.Add', 'Bedroom.AbvGr'))
+
+```
+
+From the chart, `Year.Built` and `price` have highest correlation. Yet, we should not conclude that `Year.Built` is a good predictor to predict the price just take into consideration of correlation. Instead, we must build a model. 
+
+To search for the best model, we will start with a full model that predicts price based on lot size in square feet (Lot.Area), slope of property (Land.Slope), original construction date (Year.Built), remodel date (Year.Remod.Add), and the number of bedrooms above grade (Bedroom.AbvGr). In this section, we will use backwards elimination to pick significant predictors. Remember that P-values and parameter estimates should only be trusted if the conditions for the regression are reasonable. Thus, we will use diagnostic plots to check for conditions. We will focus on adjusted R^2^ because this figure describes the strength of a model, and it is a useful tool for evaluating which predictors are adding value to the model. Firts, I will start with a full model, then drop one predictor at a time until the parsimonious model is reached. 
+
+```{r}
+# Select only relevant variables
+data <- ames_train %>%
+  select(Lot.Area, Land.Slope, Year.Built, 
+         Year.Remod.Add, Bedroom.AbvGr, price)
+
+# Remove NA
+data_model <- data[complete.cases(data),]
+
+# Build full model
+m <- lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = data_model)
+
+summary(m)
+
+par(mfrow = c(2,2))
+plot(m)
+```
+
+The summary of our model indicates that the adjusted R^2^ value is 0.5598. We will drop the variable with the highest p-value and re-fit the model.
+
+
+```{r}
+# Adj.r.squared of full model 
+
+s <- summary(m)$adj.r.squared
+
+#  Create a new model, m1 to remove Lot.Area from the list of explanatory variables. Then check adj.r.squared and compare it to the adj.r.squared of the full model
+
+m1 <- lm(log(price) ~ Land.Slope + Year.Built + 
+           Year.Remod.Add + Bedroom.AbvGr, data = data_model)
+s1 <- summary(m1)$adj.r.squared
+
+#  Create a new model, m2 to remove Year.Built from the list of explanatory variables. Then check adj.r.squared and compare it to the adj.r.squared of the full model
+
+m2 <- lm(log(price) ~ Lot.Area + Land.Slope + 
+           Year.Remod.Add + Bedroom.AbvGr, data = data_model)
+s2 <- summary(m2)$adj.r.squared
+
+#  Create a new model, m3 to remove Year.Remod.Add from the list of explanatory variables. Then check adj.r.squared and compare it to the adj.r.squared of the full model
+
+m3 <- lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + 
+           Bedroom.AbvGr, data = data_model)
+s3 <- summary(m3)$adj.r.squared
+
+#  Create a new model, m4 to remove Bedroom.AbvGr from the list of explanatory variables. Then check adj.r.squared and compare it to the adj.r.squared of the full model
+
+m4 <- lm(log(price) ~ Lot.Area + Land.Slope + 
+           Year.Built + Year.Remod.Add, data = data_model)
+s4 <- summary(m4)$adj.r.squared
+
+#  Create a new model, m5 to remove Land.Slope from the list of explanatory variables. Then check adj.r.squared and compare it to the adj.r.squared of the full model
+
+m5 <- lm(log(price) ~ Lot.Area + Year.Built + 
+     Year.Remod.Add + Bedroom.AbvGr, data = data_model)
+s5 <- summary(m5)$adj.r.squared
+```
+
+```{r message = FALSE, warning=FALSE}
+Adj.R_Squared  <- rbind(s, s1, s2, s3, s4, s5)
+model <- c('m','m1', 'm2', 'm3', 'm4', 'm5')
+df <- data.frame(cbind(model, Adj.R_Squared))
+kable(df[1:2], caption = 'Model - Adj.R_Squared')
+```
+
+The full model yield highest adj.r.squared. We will use Bayesian model averaging to verify this finding
+
+```{r}
+bma_m <- bas.lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = data_model, prior = 'BIC', modelprior = uniform())
+
+image(bma_m, rotate = FALSE)
+```
+
+Land.SlopeMod and Land.Slope.Sev does not yield highest adjusted r squared but Land.SlopeGtl is the intercept value and, thus, Land.Slope cannot be removed unless this variable was split into three separate dummy variables. So the final model will be
+
+```{r}
+m <- lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = data_model)
+```
+
+
+* * *
+
+## Question 5:
+
+**Which home has the largest squared residual in the previous analysis (Question 4)? Looking at all the variables in the data set, can you explain why this home stands out from the rest (what factors contribute to the high squared residual and why are those factors relevant)?**
+
+
+```{r Q5}
+which(abs(resid(m)) == max(abs(resid(m))))
+
+```
+
+House #428 has the largest squared residual
+
+```{r}
+as.data.frame(data_model[428,])
+```
+
+We will use model to predict the price of #428 and compare with its actual price
+
+```{r}
+data_model.pred <- data_model
+data_model.pred <- as.data.frame(data_model.pred)
+
+data_model.pred$predicted <- exp(predict(m))
+data_model.pred$residuals <- residuals(m)
+
+data_model.pred[428,]
+
+
+```
+
+This home stands out from the rest because the actual price (12,789) but we predicted 103,176. When we look at the house's information, we see that the house only has 2 bedroom with lot.are is 9656 and other figures are not high so the price of 12,789 is reasonable. From here, we see that our model is overprediting 
+
+
+* * *
+
+## Question 6:
+
+**Use the same model selection method you chose in Question 4 to again find the best multiple regression model to predict the natural log of home prices, but this time **replacing Lot.Area with log(Lot.Area)**. Do you arrive at a model including the same set of predictors?**
+
+
+```{r Q6}
+model6 <- lm(log(price) ~ log(Lot.Area) + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = data_model)
+summary(model6)
+
+```
+
+We can see that p-value for Land.Slope is significantly changed. p-value for this figure increases more than in the full model. We will remove `Land.Slope` from the full model to check if there is any difference
+
+```{r}
+model6_red <- lm(log(price) ~ log(Lot.Area) + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = data_model)
+summary(model6_red)
+```
+
+The adjusted value of reduced model (0.6015) is lower than the full model (0.6032). However, the reduced model has Land.SlopeGtl included in the intercept value. Thus, Land.Slope cannot be removed unless this variable was split into three separate dummy variables, so the model ends up having the same predictors.
+
+
+* * *
+
+## Question 7:
+
+**Do you think it is better to log transform Lot.Area, in terms of assumptions for linear regression? Make graphs of the predicted values of log home price versus the true values of log home price for the regression models selected for Lot.Area and log(Lot.Area). Referencing these two plots, provide a written support that includes a quantitative justification for your answer in the first part of question 7**
+
+```{r Q7, warning = FALSE}
+true <- log(ames_train$price)
+pred1 <- predict(m)
+pred2 <- predict(model6)
+data <- data.frame(true = true, pred = c(pred1, pred2), prediction = c(rep(c('Lot.Area'),1000), rep(c('log(Lot.Area))'),1000)), diff = pred1-pred2)
+
+ggplot(data, aes(x = true, y = pred, color = prediction)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope=1, intercept=0) +
+  theme(legend.position=c(0.2, 0.8), 
+        plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Predicted log(Price) vs Actual log(Price) for Both Models", y = "Predicted log(Price)", x = "Actual log(Price)")
+
+```
+
+Both model has the same predictors. The `model6` has higher adj.r.squared than `m` model (0.6032 > 0.5598). According to the plot, Lot.Area has more outliers than log(Lot.Area) (blue dots) so the `model6` has lower prediction error and better linear fit
+
+

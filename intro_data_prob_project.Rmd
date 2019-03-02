@@ -1,0 +1,361 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(colorspace)
+library(knitr)
+
+```
+
+### Load data
+
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+The Behavior Risk Factor Surveillance System (BRFSS) is the U.S health survey system to collect nationwide population-based state-level data on a multitude of health behaviors and conditions. Currently, there are 50 states as well as the District of Columbia and three U.S territories participated in this project.
+
+The Centers of Disease Control and Prevention (CDC) conducts monthly survey via telephone with a standardized questionaire. The questionaire has three parts: 
+
+  1.  Core component includes fixed core questions asked each         year and rotating questions (each asked in alternating          years) 
+  2.  Optional modules based on specific topic such as diabetes,       cancer survivorship. 
+  3.  State-added questions: CDC provides each state with the         text of the core component and the optional modules.            States will select optional modules and add their own           quesitons in state-added questions part and then each           state will send it's finalized questionaire content to the       CDC. State will conduct telephone interviews during each        calendar month (7 days per week) to collect data and then       submit to the CDC.
+
+CDC limits to collect information just from the U.S residents living in a private residence or college housing who are 18 years old or older. Once these conditions are met, a random adult will be selected for the interview. Thus, the study is obsevational and only shows associational relationship.
+
+There are some issues with this sampling method: 
+
+  1.  Interview format: each state will add its own questions in       the state-added part and this will not standardize              questionaires completedly. Because 50 states will involve       in this project, we will face difficulties in attributing       outcomes such as state laws and actions challenging             certain health reforms. Also, states also have their own        reporting requirements for diseases and conditions that         must be reported to the state health department, and for        reporting to disease-specific registries
+  2.  Survey method: the BRFSS focuses on phone interview so it       will have some limitations such as time and some                potential interviewees might be reluctant to participate        in an interview. Also, the BRFSS needs to train                 interviewers to ensure them to have good skill in               conducting interview otherwise some drawbacks can occur         such as spending too much time on unimportant questions.
+
+This research is useful for planning, initiating, and supporting health promotion and disease prevention programs at the state and federal level, and monitoring progress toward achieving health objectives for the state and nation. 
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:**
+
+Are income level and having health care coverage associated with the ability to see doctor because of the cost or not?
+
+Variables: 
+
+  1.  income2: Income Level
+  2.  hlthpln1: Have Any Health Care Coverage
+  3.  medcost: Could Not See Dr. Because Of Cost
+
+Health care is a big concern for the U.s government. Doing analysis in this area will help the government knows whether the health care coverage will affect people's ability to see doctor when they are sick or not. And then the government can adjust health care program to benefit its residents
+
+**Research quesion 2:**
+
+Age and eating habit have any association in having diabetes or not?
+
+Variables:
+
+  1.  diabete3: (Ever Told) You Have Diabetes
+  2.  X_age_g: ages
+  3.  X_vegesum: total number of vegetables consumed per day
+
+The number of people having diabetes are increasing. Answering this question will help people realize the benefit of having a good eating habit for their health. 
+
+**Reasearch question 3:**
+
+For the U.S residents who reported that they had joint pain and their limitation due to the joint pain, do physical activity levels have some association with the join pain?
+
+Variables: 
+  
+  1.  joinpain: Joint Pain
+  2.  X_pacat1: Physical Activity Levels
+  3.  lmtjoin3: limitation due to join pain
+
+There are some people will be interested in this topic especially athletes. They may want to know if their physical activities will have any relationship with their join pain. From there, they can reschedule their activities so that they can avoid or reduce the join pain during exercises
+
+**Research question 4:**
+
+Are smoking habit and ages in association with the number of days they reported their health was not good?
+
+Variables: 
+
+  1.  X_smoker3: Heavy Alcohol Consumption Calculated Variable
+  2.  X_age_g: ages
+  3.  physhlth: physical health was not good
+
+Many people want to know whether smoking affects their health and at which age that people will have more bad bad with their health if they smoke
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+We will start looking the data in general
+
+```{r}
+dim(brfss2013)
+```
+
+
+The data has 491,775 observations and 330 variables and some variables carry NA value. To simply the EDA process, we will create a function called "complete" to just take observations that have a value for each variables
+
+```{r}
+complete <- function(...) {
+  study <- brfss2013 %>%
+    select(...)
+  
+return(study[complete.cases(study),]) #* Create new data without missing values with "complete.cases" function*
+}
+```
+
+
+**Research quesion 1:**
+
+Are income level and having health care coverage associated with the ability to see doctor because of the cost or not?
+ 
+```{r}
+in_med_h <- complete(income2, medcost, hlthpln1)
+head(in_med_h)
+```
+
+Line 2 shows "Yes" for `hlthpln1` and "No" for `medcost`. In general, when a person is covered by health insurance, they will be able to see doctor if they are sick. So, we should revalue the medcost column by using plyr function "revalue" to revalue medcost column
+
+```{r}
+in_med_h$medcost <- plyr::revalue(in_med_h$medcost, c("Yes" = "No", "No" = "Yes"))
+head(in_med_h)
+```
+
+We will look at income2 and medcost and see if income affects people's ability to go to see doctor or not
+
+```{r}
+income_medcost <- in_med_h %>%
+  group_by(income2, medcost) %>%
+  summarize(Sum = n()) %>%
+  spread(medcost, Sum) %>%
+  mutate(Sum = Yes + No, `%No` = round(No/Sum*100, digit = 1))
+
+head(income_medcost)
+```
+
+
+According to the above table, `%No` for lower income is higher than higher income. It means that people who earn less will not afford to see doctor when they are sick. For example, for income less than $10,000; 28.8% cannot afford to see doctor. But for someone makes more than $75,000; only 3.5% cannot afford to see doctor. Thus, income does affect the ability to see doctor. We will see if these figures change when having health insurance or not
+
+
+```{r}
+income_medcost_in <- in_med_h %>%
+  filter(hlthpln1 == "Yes") %>%
+  group_by(income2, medcost) %>%
+  summarize(Sum = n()) %>%
+  spread(medcost, Sum) %>%
+  mutate(Sum = Yes + No, `%No` = round(No/Sum*100, digit = 1))
+
+head(income_medcost_in, 8)
+```
+
+According to the new table, having health insurance will increase the ability to see doctor. We can see that all figures in the column "%No" decreases. However, we want to have a look at these figures when people dont have health insurance
+
+```{r}
+income_medcost_no_in <- in_med_h %>%
+  filter(hlthpln1 == 'No') %>%
+  group_by(income2, medcost) %>%
+  summarize(Sum = n()) %>%
+  spread(medcost, Sum) %>%
+  mutate(Sum = Yes + No, `%No` = round(No/Sum*100, digit = 1))
+
+head(income_medcost_no_in, 8)
+```
+
+we can see that income and having health care coverage are in association with the the medcost(the ability to see doctor because of medical expenses). For example, 58% of respondents are not willing to see doctor if income is less than $10,000 and having no health coverage. Yet, if covered by health policy, just 18.6% is not afford to see doctor. 
+
+TO be clearer, we will plot a bar chart to show these relationships
+
+```{r}
+
+ggplot(in_med_h, aes(x = income2, y = 1, fill = medcost)) +
+  geom_col(position = 'fill') +
+  scale_y_continuous(labels = c("0%", "25%", "50%", "75%", "100%"))  +
+  scale_fill_manual(values = rainbow_hcl(2)) +
+  facet_grid(hlthpln1 ~.) +
+  labs(title = "Proportion of Respondents Who Could Afford to See Doctor by \n Income Levels and Whether They Have Health Care Coverage", x = "Income level", y = "% of Respondents", fill = "Affordability") +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1), plot.title = element_text(hjust = 0.5)) 
+  
+```
+
+
+From the plot, we can see that income and having health care insurance will affect the ability to see doctor. Lower income people are more likely not affrod to see doctor because of the cost.
+
+Summary:
+
+  - Question: Are income level and have health care coverage        associated with the ability to see doctor because of the        cost or not?
+  
+  - Narrative from the Exploratory Analysis: the answer is yes.     Having insurance will increase the affordability of people      to go to see doctor. Also, the higher income people made,       the more affordable people go to see doctor when they are       sick. It looks like that lower income struggle with getting     treatment when they are sick so the government should have a     look at this issue to offer different type of health policy     based on income so that everyone can have insurance and         could afford for the medial cost.
+
+**Research quesion 2:**
+
+Age and eating habit have any association in having diabetes or not? We will first prepare the data for analysis
+
+```{r}
+diabetes <- complete(X_age_g, diabete3, X_vegesum)
+```
+
+`diabate3` has 4 observations: "Yes", "No", "No, pre-diabetes or borderline diabetes" and "Yes, but female told only during pregnancy". We will just focus on Yes and No for this analysis
+
+```{r warning=FALSE}
+sum <- diabetes %>%
+  filter(diabete3 == c("Yes", "No")) %>%
+  group_by(diabete3, X_age_g) %>%
+  summarize(Sum = n()) %>%
+  spread(diabete3, Sum) %>%
+  mutate(Sum = Yes + No, `%Yes` = round(Yes/Sum*100, digit = 1))
+
+head(sum)
+
+```
+
+We can see that percentage of people having diabetes increases by ages. Only 1% people from age 18 to 24 having diabetes while 21.3% people from the age of 65 or older said that they have been struggling with diabetes. We will visualize the relationship between diabetes and the consumption of vegetables to see if increasing more vegetables everday will help with the disease or not
+
+```{r warning = FALSE}
+aa <- diabetes %>%
+  filter(diabete3 == c("Yes", "No"))
+
+ggplot(aa, aes(x = X_age_g, y = X_vegesum)) +
+  geom_boxplot(color = "brown") +
+  facet_grid(diabete3 ~.) +
+  labs(title = "Diabetes In Association With The Consumpsion of Vegetables", y = "Vegetables consumed per day", x = "Ages")
+
+```
+
+According to the plot, having more vegetables everyday will lower the chance to have diabetes 
+
+Summary:
+
+  - Question: Age and eating habit have any association in          having diabetes or not?
+  
+  - Narrative from the Exploratory Analysis: the answer is yes.     People who are getting old will have higher chance to have      diabetes but increasing more vegetables everday will help       with the disease.
+
+**Research question 3:**
+
+For the U.S residents who reported that they had joint pain and their limitation due to the joint pain, do physical activity levels have some association with the pain?
+
+We will just focus on respondents who reported that they had some limitations due to join pain and what type of activity they participated
+
+```{r}
+join_li_phy <- complete(X_pacat1, joinpain, lmtjoin3) %>%
+  filter(joinpain != 0 & lmtjoin3 == "Yes")
+
+head(join_li_phy)
+
+```
+
+Some people may think that they will not have any join pain if they do not do any physical activies but according to the table, we can see that some respondents said that they had join pain even though they are inactive. To demtermine if there is any association between physical activity and joint pain score, we will do summary statistics
+
+```{r}
+sum_stat <- join_li_phy %>%
+  group_by(X_pacat1) %>%
+  summarize(Q1 = quantile(joinpain, .25), MEAN = mean(joinpain), MEDIAN = median(joinpain), Q3 = quantile(joinpain, .75), IQR = IQR(joinpain), SDEV = sd(joinpain)) %>%
+  mutate(SKEW = ifelse(MEAN > MEDIAN, "RIGHT", "LEFT"))
+
+sum_stat
+```
+
+We can see that the standard deviation of four categories are pretty similar to each other. Yet, the Q1, mean, median and Q3 are difeerent for these activities. For example, Hightly active and Active are right skew so more joint pain values are less than 5.5 and 5.6, respectively. However, the insufficiently active and inactive are left skew. The insufficiently active is slightly symmetric (mean = 5.965, median = 6).
+
+To have a better view about these relations, we will do a density plot as below:
+
+```{r}
+ggplot(join_li_phy, aes(x = joinpain, color = X_pacat1)) +
+  geom_density(adjust = 2) +
+  scale_color_manual(values = rev(heat_hcl(5, h = c(0, -100), c = c(80,40), l = c(40, 75), power = 1))) +
+  scale_x_continuous(breaks = c(1:10)) +
+  labs(title = "Distribution of Reported Joint Pain Levels \n by Physical Activity Level", y = "Density", x = "Joint Pain Level", col = "Physical Activity Level") 
+```
+
+The density plot reflects the summary statistics as Inactive distribution is denser at higher joint pain scores compared to the other categories. High active distribution is denser at the low joint pain than the other three
+
+
+```{r message=FALSE}
+join_li_phy_sum <- join_li_phy %>%
+  group_by(X_pacat1, joinpain) %>%
+  summarize(Sum = n()) 
+
+cc <- scales::div_gradient_pal("brown", "purple", "pink", "Lab")(seq(0, 1, length.out = 10))
+
+ggplot(join_li_phy_sum, aes(x = factor(X_pacat1, labels = c("Inactive", "Insufficiently active", "Active", "Highly active")), y = 1, fill = factor(joinpain, levels = c(10:1))))  +
+  geom_col(position = 'fill') +
+  scale_fill_manual(values = cc, labels = c('10-Worst pain', 9:2, '1-Least pain')) +
+  scale_y_continuous(labels = c("0%", "25%", "50%", "75%", "100%")) +
+  labs(title = "Proportion of Respondents Suffered from Joint Pain \n from Activity Levels", y = "% Respondents", x = "Physical Activity Levels", fill = "Pain Levels") 
+
+```
+
+From the chart, we can see that % respondents who reported that they had worst pain is the highest for "Inactive", followed by "Insufficiently active", then "Active" and "Highly active"
+
+Summary:
+
+  - Question: For the U.S residents who reported that they had      joint pain and their limitation due to the joint pain, do       physical activity levels have some association with the join     pain?
+  
+  - Narrative from the Exploratory Analysis: The answer is yes.     Increased physical activies associated with the reduction of     join pain level
+
+**Research question 4:**
+
+Are smoking habit and ages in association with the number of days they reported their health was not good?
+
+
+```{r}
+smoke_phy <- complete(X_age_g, physhlth, X_smoker3)
+head(smoke_phy)
+
+```
+
+We will revalue X_smoker3 
+
+```{r message=FALSE}
+smoke_phy$X_smoker3 <- plyr::revalue(smoke_phy$X_smoker3, c("Current smoker - now smokes every day" = "Smokes every day", "Current smoker - now smokes some days" = "Smokes some days"))
+
+head(smoke_phy)
+```
+
+we will look at these three variables but exclude respondents who reported have zero bad day with their physical health. Then, we will perform summary statistics
+
+```{r}
+smoke_phy_sum <- smoke_phy %>%
+  filter(physhlth != 0) %>%
+  group_by(X_age_g, X_smoker3) %>%
+  summarize(Q1 = quantile(physhlth, .25), MEAN = mean(physhlth), MEDIAN = median(physhlth), IQR = IQR(physhlth), Q3 = quantile(physhlth, .75), SDEV = sd(physhlth)) 
+
+head(smoke_phy_sum)
+```
+
+We can see that for those smoke everyday, mean and median are higher than former smoker or never smoked people. Especially for old people (age 55 or more), the mean and median are higher than other age group. It means that smoking people experice more bad day with their physical health than former smoker and never smoked people. We will plot a line chart to see more about these relationships
+
+```{r}
+ggplot(smoke_phy_sum, aes(x = X_smoker3, y = MEAN, col = X_age_g, group = X_age_g)) +
+  geom_line(lwd = 2) +
+  scale_y_continuous(breaks = c(0:20)) +
+  scale_color_manual(values = heat_hcl(6, h = c(20, -100), c = c(80,40), l = c(40, 75), power = 1))+
+  labs(title = "Average Number of Days Respondent Experience Bad Day \n with Their Physical Health by Smoking Habit and Age", x = "Smoking Habit", y = "Average Number of Days",color = "Age") 
+```
+
+We can see from the chart that the more age people have and the more smoking they do, the more day they will experience with their physical health. All of lines (except age 18-24) peak at "Smokes some days" so it means that for those people even though they just smoke some day, it is a high change for them to have more bad day with their physical health than other people.
+
+Summary:
+
+  - Question: Are smoking habit and ages in association with the     number of days people reported to have bad day with their       health?
+
+  - Narrative from the Exploratory Analysis: The answer is Yes.     Smoking and older age associated with more bad days people      have with their physical health

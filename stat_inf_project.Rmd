@@ -1,0 +1,233 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+    toc: true
+---
+
+## 1. Setup
+
+### 1.1 Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(colorspace)
+library(statsr)
+```
+
+### 1.2 Load data
+
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+```{r}
+dim(gss)
+```
+
+The GSS data has 57,061 obsevations and 114 variables. However, We will just extract information that we want to explore in this study. To be easier to do analysis, we will create a function called "prepdata" to eliminate NA values 
+
+```{r}
+prepdata <- function(...) {
+  study <- gss %>%
+    select(...)
+  
+return(study[complete.cases(study),])  
+}
+```
+
+
+### 1.3 Data Description
+
+The General Social Survey (GSS) is a sociological survey created by the National Opinion Research Center (NORC) at the University of Chicago funding by the National Science Foundation (NSF). The GSS collects data about demographic, behavioral, and attitudinal questions, plus topics of special interest. The purpose is to build a reliable dataset for researching, monitoring and explaining trends, changes, and constants in attitudes, behaviors, and attributes as well as examining the structure, development, and functioning of society in general and developing cross-national models of human society.
+
+About 5,000 American are invited to respond to the survey. All households from across the country had an equal chance of being selected for this survey. Then the GSS will randomly select an adult member of a household to complete the interview. Selected people will be asked about their opinion on a variety of topics.
+
+**Scope of Inference**: As a large representative random sampling was drawn, the data for the sample is generalizable to the adult population of the participating states. Thus, the study is obsevational and only shows associational relationship.
+
+* * *
+
+## 2. Impact of education on income level
+
+### 2.1 Motivation
+
+People always question if education has any impact on the income. In the past, it is said that the higher education we have, the more salary we will receive. Thus, many people put a lot of efforts and money to invest in education to acquire a degree. Is it true that education has a big impact on ensuring to have higher income after gradution? We will find an answer for that question soon. 
+
+### 2.2 Exploratory Data Analysis
+
+The variables analyzed in this study are:
+
+  - **degree**: categorical variable indicating highest degree       that people obtained 
+  - **finrela** : categorical variable about opinion of family       income in comparison with American families in general
+
+To reflect the latest trend, we will just do analysis year of 2010 and after. 
+
+```{r}
+degree_income <- prepdata(degree, finrela, year) %>%
+  filter(year >= '2010')
+
+dim(degree_income)
+```
+
+The dataset reduced to 3952 records from the total 57061 records
+
+```{r }
+ggplot(degree_income, aes(degree)) +
+  geom_bar(position = 'dodge', aes(fill = finrela)) +
+  labs(title = 'Having A Degree In Association With Income', fill = 'Income Level') 
+```
+
+
+**Observations:**
+
+  - Below average and Average income level are peak at High         School. 
+  - Above Average income level is highest for bachelor group,       follow by high school and then graduate. It seems that          people make more money when having bachelor degrees
+  - Bachelor and graduate have highest count for 'far abot          average' income level in comparision with other groups. 
+
+For the better illustrating the relationship between two categorical variables, we will use **Mosaic plots** as follow: 
+
+```{r}
+plot(table(degree_income$finrela, degree_income$degree))
+```
+
+In the above mosaic plot, income increases when having higher degree, especially for college and graduate groups. 
+
+
+### 2.3 Inference
+
+#### 2.3.1 State Hypothesis
+
+  - **Null hypothesis**: income level and education are             independent
+  - **Alternative hypothesis**: income level and education are      dependent
+
+#### 2.3.2 Check conditions
+
+  - **Independence**: `gss` data was generated from a random        sample so we can assume that the records are independent 
+  - **Sample size**: the sample was obtained with no replacement     with 3,952 records which is lower than 10% of population        (57,061 observations)
+  - **Degree of freedom**: we have 5 income levels and 5 degree     types. As we have 2 categorical variables with more than 2      levels, we could use chi-squared test of independence for       hypothesis testing 
+  - **Expected count**: to perform chi-squared test, the            expected count should more than 5 for each cell. 
+  
+```{r}
+chisq.test(degree_income$degree, degree_income$finrela)$expected
+```
+
+From the above table, it is clear that each cell has 5 expected count. Thus, all conditions for performing chi-squared test are met. We will set 5% for significance level. 
+
+#### 2.3.3 Hypothesis test
+
+```{r}
+chisq.test(degree_income$degree, degree_income$finrela)
+```
+
+X-squared is 632.33 for 16 degree of freedoms and p-value is much lower than the significance level. Thus, we have convincing evidence to reject the null hypothesis in favor of alternative hypothesis that education and income level are dependent. The study is observational so there is only an association between these two variables - no casual relationship involved. 
+
+***
+
+## 3. Income Disparity Based On U.S Citizenship
+
+### 3.1 Motivation
+
+Are immigrants really taking American job? This is the hot topic recently and the president Donald Trump are having a lot of policies to limit opportunities for foreign worker. We would like to know if foreign workers are underpaid or they got paid the same amount with the U.S citizens
+
+### 3.2 Exploratory Data Analysis
+
+The variables analyzed for this study are:
+
+  - **uscitzn**: U.S citizenship status 
+  - **coninc** : total income in constant dollars
+  
+  
+```{r}
+citizen_income <- prepdata(uscitzn, coninc) 
+
+citizen_income$uscitzn <- plyr::revalue(citizen_income$uscitzn, c('A U.S. Citizen Born In Puerto Rico, The U.S. Virgin Islands, Or The Northern Marianas Islands' = 'Island', 'Born Outside Of The United States To Parents Who Were U.S Citizens At That Time (If Volunteered)' = 'Born Outside', 'A U.S. Citizen' = 'Citizen', 'Not A U.S. Citizen' = 'Not Citizen'))
+
+table(citizen_income$uscitzn)
+  
+```
+
+We will just focus on 'citizen' and 'not citizen' group
+
+```{r }
+citizen_income <- citizen_income%>%
+  filter(uscitzn == "Citizen" | uscitzn == "Not Citizen")
+
+dim(citizen_income)
+```
+
+```{r}
+ggplot(data=citizen_income,aes(x = coninc))+ 
+  geom_histogram(bins = 30) + 
+  facet_wrap(~uscitzn)
+```
+
+**Observations**
+
+  - 'Not Citizen' group has a right skewed distribution
+  - For higher income such as more than $150,000; there are more     U.S citizens. 
+  
+  
+### 3.3 Inference
+
+#### 3.3.1 State hypotheses
+
+  - **Null hypothesis**: the population mean of total income is     the same for the U.S citizen and foreigners.
+  - **Alternative hypothesis**: the population mean of total        income is not the same for the U.S citizen and foreigners
+
+#### 3.3.2 Check conditions
+
+  - **Independence**: `gss` data was generated from a random        sample so we can assume that the records are independent 
+  - **Sample size**: the sample was obtained with no replacement     with 159 records which is lower than 10% of population          (57,061 observations)
+  - **Nearly normal**: To analyze the normality of the              distributions, we can explore the quantile-quantile plot.
+  
+```{r}
+# 2 graphs in 1 rows
+par(mfrow = c(1,2))
+
+citzn_groups = c("Citizen","Not Citizen")
+
+for (i in 1:2) {
+ 
+qqnorm(citizen_income$coninc, main=citzn_groups[i])
+qqline(citizen_income$coninc)
+}
+```
+
+  
+There is a significant deviation from standard normal distribution in Citizen and Not Citizen groups especially in the upper quantile. This mirrors the right-skewed distributions we observed in the histogram plots.
+
+  - **Variability**: the variability of two group must be about equal
+  
+```{r}
+ggplot(citizen_income, aes(x = uscitzn, y = coninc)) +
+  geom_boxplot(aes(fill = uscitzn)) +
+  labs(title = 'Variability between two groups', fill = 'Citizenship status')
+```
+  
+We see that the the median and IQR of Citizen group is much higher than 'Not Citizen' group
+
+All conditions are not fully met so we must pay more attention when doing analysis. 
+
+
+#### 3.3.3 Hypothesis testing
+
+```{r}
+anova(lm(coninc~uscitzn, data = citizen_income))
+
+```
+
+p-value is much lower than significant level so we will reject the null hypothesis in favor of the alternative hypothesis which says that income for U.S citizen different from foreign workers. 
+
+***
+
+## Conclusion
+
+The exploratory data analysis provided good information to help predict the potential for association between potential predictor variables and the chosen response variable. From the exploratory data analysis for politics variable, we cannot see clearly the association between variables but with the inference analysis, we can see clearly this association.
+
+It is acknowledged that since the GSS survey is not an experiment study and that confounding factors may impact the associations found in this analysis. Hence, we need to construct analysis carefully.

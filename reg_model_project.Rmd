@@ -1,0 +1,341 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+    toc: true
+---
+
+##1. Introduction
+
+Is there any association between audience score and critics score and IMDB rating? This project will focus on how much audience and critics like movies as well as identify other variables about the movies. The dataset was randomly collected from Rotten Tomatoes and IMDB in the US. Also this is an observational data so we will not involve the causality relationship when analyzing the data.
+
+Variables:
+
+  - `imdb_rating`: Rating on IMDB
+  - `imdb_num_votes`: Number of votes on IMDB
+  - `genre`: Genre of movie (Action & Adventure, Comedy,             Documentary, Drama, Horror, Mystery & Suspense, Other)
+    audience_score: Audience score on Rotten Tomatoes
+    audience_rating: Categorical variable for audience rating on     Rotten Tomatoes (Spilled, Upright)
+  - `critics_score`: Critics score on Rotten Tomatoes
+    critics_rating: Categorical variable for critics rating on       Rotten Tomatoes Certified Fresh, Fresh, Rotten)
+    Movies production and advertising companies will be              interested in this information. They want to know if there       are any differences between the audience score and critics       scores as well as what kind of movies that will attract more     audience
+
+
+##2. Setup
+
+###2.1 Load packages
+
+```{r load-packages, message = FALSE, warning = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+```
+
+###2.2 Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+**Scope of Inference**: This dataset includes information from Rotten Tomatoes and IMDB for a random sample of movies. Thus, the study is obsevational and only shows associational relationship.
+
+* * *
+
+
+##3. Exploratory data analysis
+
+```{r}
+dim(movies)
+```
+
+The movies data has 651 observation and 32 variables. We will look at str(movies) and head(movies) for more details
+
+```{r}
+str(movies)
+head(movies)
+```
+
+To simply the EDA process, we will create a function called "complete" to just take observations that have a value for each variables
+
+```{r}
+complete <- function(...) {
+  study <- movies %>%
+    select(...)
+  
+  return(study[complete.cases(study),])
+}
+```
+
+Prepare data for analysis
+
+```{r}
+data <- complete(audience_score, critics_score, imdb_rating, audience_rating)
+
+head(data)
+```
+
+We can see that audience and critics gave different score on many different type of movies so it means that critics and audience have different view of scoring movies.
+
+First, we will focus on audience_score and critics_score to see if there is any association between these variables. We will summary this relatioship via the following plot
+
+```{r}
+ggplot(data, aes(x = critics_score, y = audience_score)) +
+  geom_point()
+```
+
+
+```{r}
+data %>%
+  summarize(cor(audience_score, critics_score))
+```
+
+We can see that correlation between audience score and critics score is pretty high.
+
+We will include linear model to the plot to explore the relationship between audience_score and critics_score
+
+```{r}
+ggplot(data, aes(x = critics_score, y = audience_score)) +
+  geom_point() +
+  stat_smooth(method = 'lm', se = FALSE)
+```
+
+Next, we will visualize the relationship between audience_score and imdb_rating
+
+```{r}
+ggplot(data, aes(x = imdb_rating, y = audience_score)) +
+  geom_point()
+```
+
+
+```{r}
+data %>%
+  summarize(cor(audience_score, imdb_rating))
+```
+
+We will add linear model to the plot
+
+```{r}
+ggplot(data, aes(x = imdb_rating, y = audience_score)) +
+  geom_point() +
+  stat_smooth(method = 'lm', se = FALSE)
+```
+
+We can see the positive relationship between audience_score and imdb_rating
+
+To check if there is an association between critics_score and imdb_rating, we will plot the chart between these two variables
+
+```{r}
+ggplot(data, aes(x = imdb_rating, y = critics_score)) +
+  geom_point()
+```
+
+
+```{r}
+data %>%
+  summarize(cor(imdb_rating, critics_score))
+```
+
+Finally, we will paiwise imdb, audience and critics variable too overview the relationship between them
+
+```{r fig.width=12, height = 5}
+ggpairs(movies, columns = 13:18)
+```
+
+We can see strong association between imdb, critics score with audience_score. Correlation coefficent between audience_score and imdb_rating is 0.865. This figure for audience_score and critics_score is 0.704. And correlation for critics_score and imdb_rating is 0.765. However, We will not use critics_score variable as a predictor because critics_score and audience_score will contribute redundant information to the model and complicate model estimation
+
+* * *
+
+##4. Modeling
+
+Based on the research question, we will just focus on the relationship between audience_score and imdb_rating. According to the above plots about these variables, we can see that linear model will be fit to answer the research question. However, we have not taken into consideration other variables that may affect the audience_score. In this section, we will use backwards elimination to pick significant predictors and first, we will start with full model. We will pick title_type, genre, runtime, mpaa_rating, thtr_rel_year, thtr_rel_month, imdb_rating, imdb_num_votes, critics_score, critics_rating, audience_rating as predictors and audience_score as response variable
+
+```{r}
+modeling <- complete(title_type, genre, runtime, 
+         mpaa_rating, thtr_rel_year, thtr_rel_month, 
+         imdb_rating, imdb_num_votes, critics_score,
+         critics_rating, audience_rating, audience_score)
+
+fit0 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit0)
+```
+
+Although in the previous section, we said that we will not take into consideration the critics_score variable, we still add it in fit0 to see if its p-value is significant or not. Then we will drop variables with the highest p-value and repeat until all variables left in the model are significant. 
+
+```{r}
+# Drop title_type
+fit1 <- lm(audience_score ~ genre + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit1)$adj.r.squared
+
+#Drop genre
+fit2 <- lm(audience_score ~ title_type + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit2)$adj.r.squared
+
+#Drop runtime
+fit3 <- lm(audience_score ~ title_type + genre + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit3)$adj.r.squared
+
+#Drop mpaa_rating
+fit4 <- lm(audience_score ~ title_type + genre + runtime + 
+         thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit4)$adj.r.squared
+
+#Drop thtr_rel_year
+fit5 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit5)$adj.r.squared
+
+#Drop thtr_rel_month
+fit6 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_year + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit6)$adj.r.squared
+
+#Drop imdb_rating
+fit7 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_num_votes + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit7)$adj.r.squared
+
+#Drop imdb_num_votes
+fit8 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + critics_score +
+         critics_rating + audience_rating, data = modeling)
+summary(fit8)$adj.r.squared
+
+#Drop critics_score
+fit9 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + 
+         critics_rating + audience_rating, data = modeling)
+summary(fit9)$adj.r.squared
+
+#Drop critics_rating
+fit10 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         audience_rating, data = modeling)
+summary(fit10)$adj.r.squared
+
+#Drop audience_rating
+fit11 <- lm(audience_score ~ title_type + genre + runtime + 
+         mpaa_rating + thtr_rel_year + thtr_rel_month + 
+         imdb_rating + imdb_num_votes + critics_score +
+         critics_rating, data = modeling)
+summary(fit11)$adj.r.squared
+
+```
+
+Based on the result, the significant predictors are imdb_rating, audience_rating and genre. We will look at each predictor
+
+```{r}
+fit_imdb <- lm(audience_score ~ imdb_rating, data = modeling)
+summary(fit_imdb)
+
+fit_rating <- lm(audience_score ~ audience_rating, data = modeling)
+summary(fit_rating)
+
+fit_gen <- lm(audience_score ~ genre, data = modeling)
+summary(fit_gen)
+```
+
+We can see that, for genre criteria, Documentary, Drama and Mysical $ Performing Arts are more significant affecting audience_score than other movies types.
+We will rewite the linear model for the response variable as follow:
+
+```{r}
+fit_all <- lm(audience_score ~ genre + imdb_rating + audience_rating, data = modeling)
+summary(fit_all)
+```
+
+```{r}
+anova(fit_all)
+```
+
+In the beginning, we though that critics_score has a really strong relationship with audience_score but from ANOVA table, we can see that imdb_rating, audience_rating, genre are more significant.
+Next, we will look at correlation coefficients of these variables
+
+```{r}
+coefficients(fit_all)
+
+```
+
+  - **Intercept** = -12.56053 indicating that if we do not          include any predictor in the model, the estimated               audience_score will be -12.56053
+  - **imdb_rating**: the estimated audience_score will be           9.8028449 when the imdb_rating goes up by 1
+  - **genre**: this is a tricky variable. The audience_score        goes up or down depending on the category of the movie
+    audience_rating: the estimated audience_score goes up           20.3180279 for each 1 increase in audience_rating
+
+Lastly, we will perform diagnotics for MLR
+
+```{r}
+fit_all <- lm(audience_score ~ genre + imdb_rating + audience_rating, data = modeling)
+
+#Check linearity
+ggplot(fit_all, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = 'dashed') +
+  xlab('Fitted Values') +
+  ylab('Residuals')
+
+#Check normal distribution via histogram
+ggplot(fit_all, aes(x = .resid)) +
+  geom_histogram(bins = 30) +
+  xlab('Residuals')
+
+#or via QQ-plot
+ggplot(fit_all, aes(sample = .resid)) +
+  stat_qq()
+```
+
+
+
+* * *
+
+##5. Prediction
+
+Build test data cases for the movie "Aquaman (2018)" using the data gathered from IMDB (imdb_rating = 7.5) and rotten tomatoes website (audience_score = 80) and storing the data in the variable named aquaman (test data case) using the following code
+
+```{r}
+newdata <- data.frame(imdb_rating = 7.5, audience_score = 80, audience_rating = 'Upright', genre = "Science Fiction & Fantasy")
+
+aquaman <- round(predict(fit_all, newdata), digit = 0)
+
+c(aquaman , newdata$audience_score)
+```
+
+The prediction is higher than the actual audience_score. We also contruct a prediction interval around this prediction which will provide the accuracy of the prediction
+
+```{r}
+predict(fit_all, newdata, interval = 'prediction', level = 0.95)
+```
+
+We are 95% confident that the Aquaman movie will have audience_score range from 67.30 to 95.77
+
+
+* * *
+
+##6. Conclusion
+
+The project uses data from movies dataset to determine if there is any association between audience_score and critics_score and the answer is yes. However, doing exploratory data analysis and modeling help us to know that genre, audience_rating and imdb_rating are significant predictors that have strong association with the audience_score.
+
